@@ -54,7 +54,7 @@ def monitor():
         except Exception as e:
             print(f"\nError: {e}")
             
-        time.sleep(60) # 1 Minute interval
+        time.sleep(10) # 1 Minute interval
 
 if __name__ == "__main__":
     monitor()
