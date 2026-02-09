@@ -1,9 +1,9 @@
 name: Dhan Shield Automation
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '45 3 * * 1-5' # Subah 9:15 AM IST par apne aap shuru hoga
-  workflow_dispatch: # Manual start button (Testing ke liye)
+    - cron: '45 3 * * 1-5'
 
 jobs:
   monitor-portfolio:
