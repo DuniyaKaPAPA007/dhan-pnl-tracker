@@ -1,0 +1,27 @@
+name: Dhan Shield Automation
+
+on:
+  schedule:
+    - cron: '45 3 * * 1-5' # Subah 9:15 AM IST par apne aap shuru hoga
+  workflow_dispatch: # Manual start button (Testing ke liye)
+
+jobs:
+  monitor-portfolio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Install Dhan Library
+        run: pip install dhanhq
+
+      - name: Run Shield Script
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+        run: python dhan_shield.py
