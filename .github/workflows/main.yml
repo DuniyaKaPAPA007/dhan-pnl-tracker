@@ -1,14 +1,14 @@
-name: Dhan Shield Automation
+name: Dhan Portfolio Shield
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manual button ke liye
   schedule:
-    - cron: '45 3 * * 1-5'
+    - cron: '45 3 * * 1-5'  # Roz 9:15 AM IST par apne aap chalu hoga
 
 jobs:
   monitor-portfolio:
     runs-on: ubuntu-latest
-    timeout-minutes: 500 # 8 ghante tak script ko chalne dega
+    timeout-minutes: 500  # Taaki market close hone tak script na mare
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
@@ -18,11 +18,12 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install Lib
+      - name: Install Dhan Library
         run: pip install dhanhq
 
-      - name: Run Shield
+      - name: Run Shield Script
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
-        run: python dhan_shield.py
+        # -u flag se logs bina ruke turant dikhte hain
+        run: python -u dhan_shield.py
