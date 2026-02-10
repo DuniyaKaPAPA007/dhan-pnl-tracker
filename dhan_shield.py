@@ -8,7 +8,7 @@ from dhanhq import dhanhq
 IST = timezone(timedelta(hours=5, minutes=30))
 CLIENT_ID = os.getenv('DHAN_CLIENT_ID')
 ACCESS_TOKEN = os.getenv('DHAN_ACCESS_TOKEN')
-SL_PERCENTAGE = -7.5  # Aapka Stop Loss limit
+SL_PERCENTAGE = -7.5  # Aapka Stop Loss
 
 dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
@@ -51,17 +51,17 @@ def sell_all_holdings(pnl_val):
     return False
 
 def monitor():
-    log("🛡️ SHIELD ACTIVE | Indian Format Enabled | Zero-Price Protection ON")
+    log("🛡️ SMART SHIELD ACTIVE | Glitch Protection: ON")
     
     while True:
         now_ist = datetime.now(IST)
         # Market Close Check (3:15 PM IST)
         if now_ist.hour == 15 and now_ist.minute >= 15:
-            log("🛑 Market Closed. Robot so gaya.")
+            log("🛑 Market Closed. Robot sojao.")
             break
             
         try:
-            # 1. Get Funds for Remaining Margin display
+            # 1. Get Funds
             fund_data = dhan.get_fund_limits()
             avail_margin = 0
             if isinstance(fund_data, dict):
@@ -72,38 +72,35 @@ def monitor():
             if holdings['status'] == 'success' and holdings.get('data'):
                 data = holdings['data']
                 t_buy, t_curr = 0, 0
-                valid_count = 0
+                valid_stocks_count = 0
                 
-                print("-" * 60, flush=True)
+                print("-" * 65, flush=True)
                 for i, s in enumerate(data, 1):
                     name = s.get('tradingSymbol', 'Unknown')
                     q = s.get('totalQty', 0)
                     lp = s.get('lastPrice', 0)
                     bp = s.get('avgCostPrice', 0)
                     
-                    # SAFETY LOCK: 0-price glitch protection
+                    # SMART SKIP: Agar price 0 hai toh sirf us stock ko skip karo
                     if lp <= 0 or bp <= 0:
-                        print(f"⚠️  {i}. {name:<20} | Price 0 aa rahi hai (Skipping...)", flush=True)
+                        print(f"⚠️  {i:2}. {name:<20} | ❌ Price 0 (Skipped from PnL)", flush=True)
                         continue
                     
                     t_buy += (bp * q)
                     t_curr += (lp * q)
-                    valid_count += 1
+                    valid_stocks_count += 1
                     print(f"✅ {i:2}. {name:<20} | Qty: {q:<5} | Value: {format_indian_currency(lp*q)}", flush=True)
                 
                 if t_buy > 0:
                     pnl = ((t_curr - t_buy) / t_buy) * 100
-                    print("-" * 60, flush=True)
-                    log(f"📈 TOTAL INVESTMENT : {format_indian_currency(t_buy)}")
-                    log(f"💰 CURRENT VALUE    : {format_indian_currency(t_curr)}")
-                    log(f"🧧 CASH REMAINING   : {format_indian_currency(avail_margin)}")
-                    log(f"📊 OVERALL PnL      : {pnl:.2f}%")
-                    print("-" * 60, flush=True)
+                    print("-" * 65, flush=True)
+                    log(f"📊 MONITORING: {valid_stocks_count} Stocks | PnL: {pnl:.2f}%")
+                    log(f"💰 Portfolio Value: {format_indian_currency(t_curr)} | Cash: {format_indian_currency(avail_margin)}")
                     
                     if pnl <= SL_PERCENTAGE:
                         if sell_all_holdings(pnl): break
                 else:
-                    log("⚠️ Valid holdings ka data nahi mila.")
+                    log("⚠️ Kisi bhi stock ka valid price nahi mil raha (All are 0).")
             else:
                 log("⚠️ Portfolio khali hai ya API busy hai.")
                 
