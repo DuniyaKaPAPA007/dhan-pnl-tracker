@@ -8,6 +8,7 @@ on:
 jobs:
   monitor-portfolio:
     runs-on: ubuntu-latest
+    timeout-minutes: 500 # 8 ghante tak script ko chalne dega
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
@@ -17,10 +18,10 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install Dhan Library
+      - name: Install Lib
         run: pip install dhanhq
 
-      - name: Run Shield Script
+      - name: Run Shield
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
           DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
