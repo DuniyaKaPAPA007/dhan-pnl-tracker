@@ -246,7 +246,7 @@ def check_portfolio(iteration, total_iterations):
             print(f"💰 Investment: {format_inr(total_invested):<20} | 📈 Current: {format_inr(total_current)}")
             
             emoji = "🟢" if net_pnl >= 0 else "🔴"
-            print(f"{emoji} NET P&L  : {format_inr(net_pnl):<20} | Return: {net_pnl_pct:+.2f}%")
+            print(f"{emoji} NET P&L  : {format_inr(net_pnl):<20} | Return: {net_pct:+.2f}%")
             print("="*100)
             
             # 🚨 STOP LOSS CHECK 🚨
