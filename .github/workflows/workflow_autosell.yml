@@ -1,0 +1,61 @@
+name: Dhan Auto-Sell Tracker
+
+on:
+  schedule:
+    # Single 6-hour run covering full market time
+    - cron: '45 3 * * 1-5'   # 9:15 AM IST (runs till 3:15 PM)
+    # Backup run for final market check
+    - cron: '0 10 * * 1-5'   # 3:30 PM IST (last 5 mins)
+  
+  workflow_dispatch:  # Manual run button
+
+jobs:
+  track-and-autosell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install dhanhq yfinance pandas
+      
+      - name: Run Auto-Sell P&L Tracker
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          STOP_LOSS_LIMIT: ${{ secrets.STOP_LOSS_LIMIT }}
+          AUTO_SELL_ENABLED: ${{ secrets.AUTO_SELL_ENABLED }}
+        run: |
+          echo "🚀 Starting Dhan Auto-Sell Tracker..."
+          echo "📊 Stop Loss: $STOP_LOSS_LIMIT%"
+          echo "🔴 Auto-Sell: $AUTO_SELL_ENABLED"
+          python dhan_tracker.py
+      
+      - name: Upload execution logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autosell-logs-${{ github.run_number }}
+          path: |
+            *.log
+            *.txt
+          retention-days: 30
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Tracker failed! Check logs above."
+          echo "💡 Common issues:"
+          echo "   - Token expired"
+          echo "   - Network error"
+          echo "   - API rate limit"
