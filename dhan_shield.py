@@ -1,113 +1,161 @@
+"""
+🚀 DHAN P&L TRACKER FOR GITHUB ACTIONS
+Fully automated - runs during market hours
+"""
+
 import os
 import time
-import sys
-from datetime import datetime, timedelta, timezone
+import yfinance as yf
 from dhanhq import dhanhq
+from datetime import datetime
 
-# --- CONFIGURATION ---
-IST = timezone(timedelta(hours=5, minutes=30))
-CLIENT_ID = os.getenv('DHAN_CLIENT_ID')
-ACCESS_TOKEN = os.getenv('DHAN_ACCESS_TOKEN')
-SL_PERCENTAGE = -7.5  # Aapka Stop Loss
+# Get credentials from environment variables (GitHub Secrets)
+CLIENT_ID = os.getenv('DHAN_CLIENT_ID', '')
+ACCESS_TOKEN = os.getenv('DHAN_ACCESS_TOKEN', '')
+STOP_LOSS_LIMIT = float(os.getenv('STOP_LOSS_LIMIT', '-6.5'))
 
+# Initialize Dhan
 dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
-def format_indian_currency(number):
-    """Paisa ko Indian Style mein dikhane ke liye (e.g. 2,37,000)"""
-    s = str(int(number))
-    if len(s) <= 3: return "₹" + s
-    last_three = s[-3:]
-    others = s[:-3]
-    res = ""
-    while len(others) > 2:
-        res = "," + others[-2:] + res
-        others = others[:-2]
-    final = others + res + "," + last_three if others else last_three
-    return "₹" + final
-
-def log(msg):
-    """Live logs dikhane ke liye"""
-    timestamp = datetime.now(IST).strftime('%H:%M:%S')
-    print(f"[{timestamp}] {msg}", flush=True)
-
-def sell_all_holdings(pnl_val):
-    log(f"🚨 STOP LOSS HIT ({pnl_val:.2f}%)! Saari positions bech raha hoon...")
-    holdings = dhan.get_holdings()
-    if holdings['status'] == 'success' and holdings.get('data'):
-        for stock in holdings['data']:
-            qty = int(stock.get('totalQty', 0))
-            if qty > 0:
-                try:
-                    dhan.place_order(
-                        tag='ShieldExit', transaction_type=dhan.SELL,
-                        exchange_segment=dhan.NSE, product_type=dhan.CNC,
-                        order_type=dhan.MARKET, quantity=qty, 
-                        security_id=stock.get('securityId'), price=0
-                    )
-                    log(f"✅ Sold: {stock.get('tradingSymbol')}")
-                except Exception as e:
-                    log(f"❌ Error selling {stock.get('tradingSymbol')}: {e}")
-        return True
-    return False
-
-def monitor():
-    log("🛡️ SMART SHIELD ACTIVE | Glitch Protection: ON")
+def format_inr(number):
+    """Format in Indian rupee style"""
+    abs_num = abs(int(number))
+    s = str(abs_num)
     
-    while True:
-        now_ist = datetime.now(IST)
-        # Market Close Check (3:15 PM IST)
-        if now_ist.hour == 15 and now_ist.minute >= 15:
-            log("🛑 Market Closed. Robot sojao.")
-            break
-            
-        try:
-            # 1. Get Funds
-            fund_data = dhan.get_fund_limits()
-            avail_margin = 0
-            if isinstance(fund_data, dict):
-                avail_margin = float(fund_data.get('availabelBalance', fund_data.get('data', {}).get('availabelBalance', 0)))
+    if len(s) <= 3: 
+        res = s
+    else:
+        last_three = s[-3:]
+        others = s[:-3]
+        temp = ""
+        while len(others) > 2:
+            temp = "," + others[-2:] + temp
+            others = others[:-2]
+        res = others + temp + "," + last_three
+    
+    sign = "+" if number >= 0 else "-"
+    return sign + "₹" + res
 
-            # 2. Get Holdings
-            holdings = dhan.get_holdings()
-            if holdings['status'] == 'success' and holdings.get('data'):
-                data = holdings['data']
-                t_buy, t_curr = 0, 0
-                valid_stocks_count = 0
-                
-                print("-" * 65, flush=True)
-                for i, s in enumerate(data, 1):
-                    name = s.get('tradingSymbol', 'Unknown')
-                    q = s.get('totalQty', 0)
-                    lp = s.get('lastPrice', 0)
-                    bp = s.get('avgCostPrice', 0)
-                    
-                    # SMART SKIP: Agar price 0 hai toh sirf us stock ko skip karo
-                    if lp <= 0 or bp <= 0:
-                        print(f"⚠️  {i:2}. {name:<20} | ❌ Price 0 (Skipped from PnL)", flush=True)
-                        continue
-                    
-                    t_buy += (bp * q)
-                    t_curr += (lp * q)
-                    valid_stocks_count += 1
-                    print(f"✅ {i:2}. {name:<20} | Qty: {q:<5} | Value: {format_indian_currency(lp*q)}", flush=True)
-                
-                if t_buy > 0:
-                    pnl = ((t_curr - t_buy) / t_buy) * 100
-                    print("-" * 65, flush=True)
-                    log(f"📊 MONITORING: {valid_stocks_count} Stocks | PnL: {pnl:.2f}%")
-                    log(f"💰 Portfolio Value: {format_indian_currency(t_curr)} | Cash: {format_indian_currency(avail_margin)}")
-                    
-                    if pnl <= SL_PERCENTAGE:
-                        if sell_all_holdings(pnl): break
-                else:
-                    log("⚠️ Kisi bhi stock ka valid price nahi mil raha (All are 0).")
-            else:
-                log("⚠️ Portfolio khali hai ya API busy hai.")
-                
-        except Exception as e:
-            log(f"🔥 Error: {str(e)}")
+def get_live_price(symbol):
+    """Get live price - try multiple sources"""
+    # Try Yahoo Finance first
+    try:
+        ticker = yf.Ticker(f"{symbol}.NS")
+        data = ticker.history(period="1d")
+        if not data.empty:
+            return float(data['Close'].iloc[-1])
+    except:
+        pass
+    
+    # Try Dhan API
+    try:
+        response = dhan.market_quote(symbol=symbol, exchange='NSE')
+        if response and response.get('status') == 'success':
+            ltp = response.get('data', {}).get('LTP', 0)
+            if ltp > 0:
+                return float(ltp)
+    except:
+        pass
+    
+    return None
+
+def check_portfolio():
+    """Main function to check P&L"""
+    print("\n" + "="*80)
+    print(f"⏰ TIME: {datetime.now().strftime('%d-%b-%Y %H:%M:%S')}")
+    print("="*80)
+    
+    try:
+        # Get holdings
+        response = dhan.get_holdings()
+        
+        if response.get('status') != 'success':
+            print(f"❌ API Error: {response.get('remarks', 'Unknown')}")
+            return
+        
+        holdings = response.get('data', [])
+        
+        if not holdings:
+            print("⚠️ No holdings found")
+            return
+        
+        print(f"✅ Found {len(holdings)} stocks\n")
+        
+        total_invested = 0
+        total_current = 0
+        
+        print(f"{'Stock':<15} | {'Qty':<6} | {'Buy':<10} | {'Live':<10} | {'P&L':<15} | {'%'}")
+        print("-"*80)
+        
+        for stock in holdings:
+            name = stock.get('tradingSymbol', 'UNKNOWN')
+            qty = int(stock.get('totalQty', 0))
+            buy_price = float(stock.get('avgCostPrice', 0))
             
-        time.sleep(15)
+            if qty == 0:
+                continue
+            
+            # Get live price
+            live_price = get_live_price(name)
+            
+            if not live_price:
+                live_price = float(stock.get('lastPrice', 0))
+            
+            if live_price <= 0:
+                print(f"{name:<15} | {qty:<6} | {buy_price:<10.2f} | WAITING...")
+                continue
+            
+            # Calculate
+            invested = buy_price * qty
+            current = live_price * qty
+            pnl = current - invested
+            pnl_pct = (pnl / invested) * 100
+            
+            total_invested += invested
+            total_current += current
+            
+            emoji = "🟢" if pnl >= 0 else "🔴"
+            print(f"{name:<15} | {qty:<6} | {buy_price:<10.2f} | {live_price:<10.2f} | {format_inr(pnl):<15} | {emoji} {pnl_pct:+.2f}%")
+        
+        # Summary
+        if total_invested > 0:
+            net_pnl = total_current - total_invested
+            net_pct = (net_pnl / total_invested) * 100
+            
+            print("\n" + "="*80)
+            print("🎯 PORTFOLIO SUMMARY")
+            print("="*80)
+            print(f"💰 Investment  : {format_inr(total_invested)}")
+            print(f"📈 Current     : {format_inr(total_current)}")
+            
+            emoji = "🟢" if net_pnl >= 0 else "🔴"
+            print(f"{emoji} NET P&L     : {format_inr(net_pnl)} ({net_pct:+.2f}%)")
+            print("="*80)
+            
+            # Stop loss check
+            if net_pct <= STOP_LOSS_LIMIT:
+                print("\n" + "🚨"*30)
+                print(f"STOP LOSS HIT! Loss: {net_pct:.2f}% | Limit: {STOP_LOSS_LIMIT}%")
+                print("🚨"*30)
+    
+    except Exception as e:
+        print(f"🔥 Error: {e}")
 
 if __name__ == "__main__":
-    monitor()
+    if not CLIENT_ID or not ACCESS_TOKEN:
+        print("❌ Credentials not found in environment variables")
+        exit(1)
+    
+    print("\n🚀 DHAN P&L TRACKER STARTED")
+    print(f"📊 Stop Loss: {STOP_LOSS_LIMIT}%")
+    
+    # Run for market hours (6.5 hours = 390 minutes with 30 sec updates)
+    max_runs = 780  # 390 minutes * 2 (30 sec each)
+    
+    for i in range(max_runs):
+        check_portfolio()
+        if i < max_runs - 1:
+            print(f"\n⏳ Next update in 30 seconds... ({i+1}/{max_runs})")
+            time.sleep(30)
+    
+    print("\n✅ Tracker completed for today!")
